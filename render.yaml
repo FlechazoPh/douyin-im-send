@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: douyin-im-send
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3000

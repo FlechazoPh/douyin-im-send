@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # 离线自检：protobuf 编解码 roundtrip
+      - run: node src/self-check.js
+      # 离线自检：who.js 的解析逻辑
+      - run: node src/who.js --self-test
+      # 离线干跑：send.js 只编码请求，不发送
+      - run: node src/send.js --dry-run --self 100 --peer 200 --text hello
+      # 网页版能启动
+      - run: |
+          node web/server.mjs &
+          SRV=$!
+          sleep 2
+          curl -fsS http://localhost:3000/health
+          curl -fsS http://localhost:3000/ | grep -q douyin-im-send
+          kill $SRV

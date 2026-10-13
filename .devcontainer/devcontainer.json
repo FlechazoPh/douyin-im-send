@@ -1,0 +1,1 @@
+{"forwardPorts":[3000],"image":"mcr.microsoft.com/devcontainers/javascript-node:20","name":"douyin-im-send","portsAttributes":{"3000":{"label":"网页版","onAutoForward":"openPreview"}},"postCreateCommand":"node src/self-check.js && node src/who.js --self-test && echo '--- ready: npm run web 或 node src/send.js --help ---'"}

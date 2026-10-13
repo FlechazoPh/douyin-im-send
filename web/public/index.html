@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抖音私信发送 · douyin-im-send</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #0f1115; color: #e8eaf0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .sub { color: #9aa0ae; font-size: 13px; margin-bottom: 20px; }
+  .card { background: #171a21; border: 1px solid #262b36; border-radius: 12px;
+          padding: 18px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .warn { background: #2a1f10; border: 1px solid #6b4a1e; border-radius: 12px;
+          padding: 14px 16px; font-size: 13px; line-height: 1.7; color: #f0c987;
+          margin-bottom: 16px; }
+  textarea, input[type=text] { width: 100%; background: #0f1115; color: #e8eaf0;
+          border: 1px solid #2c313d; border-radius: 8px; padding: 10px 12px;
+          font-size: 13px; font-family: ui-monospace, monospace; }
+  textarea { min-height: 110px; resize: vertical; }
+  input[type=text] { font-family: inherit; }
+  button { background: #fe2c55; color: #fff; border: 0; border-radius: 8px;
+           padding: 10px 18px; font-size: 14px; cursor: pointer; margin: 10px 8px 0 0; }
+  button.secondary { background: #2c313d; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; color: #9aa0ae; }
+  #friends { max-height: 320px; overflow: auto; margin-top: 12px;
+             border: 1px solid #262b36; border-radius: 8px; }
+  .friend { padding: 10px 12px; border-bottom: 1px solid #20242e; cursor: pointer; font-size: 14px; }
+  .friend:last-child { border-bottom: 0; }
+  .friend:hover { background: #20242e; }
+  .friend.sel { background: #2a1f2e; border-left: 3px solid #fe2c55; }
+  .friend .uid { color: #9aa0ae; font-size: 12px; margin-left: 8px; }
+  #result { white-space: pre-wrap; font-size: 13px; background: #0f1115;
+            border: 1px solid #2c313d; border-radius: 8px; padding: 12px;
+            margin-top: 12px; max-height: 300px; overflow: auto; display: none; }
+  #result.ok { border-color: #1e6b3a; }
+  #result.err { border-color: #8c2b3a; }
+  .hidden { display: none; }
+  label.chk { display: flex; gap: 6px; align-items: center; font-size: 13px; color: #9aa0ae; margin-top: 10px; }
+  .footer { text-align: center; color: #5b616e; font-size: 12px; margin-top: 28px; }
+  .footer a { color: #8b93a5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>抖音私信发送</h1>
+  <div class="sub">douyin-im-send · 用你自己的登录 Cookie 给好友发一条文本私信</div>
+
+  <div class="warn">
+    ⚠️ Cookie 等同于你的登录态。<br>
+    它只保存在<strong>你这台设备的浏览器本地</strong>（localStorage），发送时经本服务转发到抖音官方接口；
+    服务端不写磁盘、不记日志。不要把 Cookie 发给任何人，也不要上传到公开仓库。
+  </div>
+
+  <div class="card">
+    <h2>1 · 粘贴 Cookie</h2>
+    <textarea id="cookie" placeholder="粘贴 douyin.com 的 Cookie：原始字符串，或浏览器插件导出的 JSON 数组"></textarea>
+    <div>
+      <button id="btnLookup">加载好友列表</button>
+      <button id="btnSave" class="secondary">保存到本机</button>
+      <button id="btnClear" class="secondary">清除已保存</button>
+    </div>
+    <div class="row" id="selfInfo"></div>
+  </div>
+
+  <div class="card hidden" id="cardFriends">
+    <h2>2 · 选择好友</h2>
+    <input type="text" id="search" placeholder="搜索昵称 / 抖音号 / uid">
+    <div id="friends"></div>
+    <div class="row" id="peerInfo">未选择</div>
+  </div>
+
+  <div class="card hidden" id="cardSend">
+    <h2>3 · 写消息并发送</h2>
+    <textarea id="text" placeholder="要发送的文本内容（最多 2000 字）" style="min-height:80px"></textarea>
+    <label class="chk"><input type="checkbox" id="dryrun"> 仅测试（dry-run，不真正发送）</label>
+    <div><button id="btnSend">发送私信</button></div>
+    <div id="result"></div>
+  </div>
+
+  <div class="footer">
+    仅供学习交流，请遵守抖音用户协议 · 协议可能随抖音更新而失效 ·
+    <a href="https://github.com/FlechazoPh/douyin-im-send" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const LS_KEY = "douyin_im_cookie";
+let friends = [];
+let peer = "";
+
+$("cookie").value = localStorage.getItem(LS_KEY) || "";
+
+$("btnSave").onclick = () => {
+  localStorage.setItem(LS_KEY, $("cookie").value.trim());
+  toast("已保存到本机浏览器");
+};
+$("btnClear").onclick = () => {
+  localStorage.removeItem(LS_KEY);
+  $("cookie").value = "";
+  toast("已清除");
+};
+function toast(msg) {
+  $("selfInfo").textContent = msg;
+  setTimeout(() => { if ($("selfInfo").dataset.keep !== "1") $("selfInfo").textContent = ""; }, 2500);
+}
+
+async function api(path, payload) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!data.ok) throw new Error(data.error || ("HTTP " + r.status));
+  return data;
+}
+
+$("btnLookup").onclick = async () => {
+  const btn = $("btnLookup");
+  const cookie = $("cookie").value.trim();
+  if (!cookie) { toast("先粘贴 Cookie"); return; }
+  btn.disabled = true;
+  try {
+    const data = await api("/api/lookup", { cookie });
+    $("selfInfo").dataset.keep = "1";
+    $("selfInfo").textContent = `自己：${data.self.nickname}（uid=${data.self.uid}，抖音号=${data.self.uniqueId || "-"}）`;
+    friends = data.friends;
+    renderFriends("");
+    $("cardFriends").classList.remove("hidden");
+    $("cardSend").classList.remove("hidden");
+  } catch (e) {
+    $("selfInfo").dataset.keep = "";
+    toast("失败：" + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+$("search").oninput = (e) => renderFriends(e.target.value.trim());
+
+function renderFriends(q) {
+  const box = $("friends");
+  box.innerHTML = "";
+  const list = friends.filter((f) =>
+    !q || f.nickname.includes(q) || (f.uniqueId || "").includes(q) || f.uid.includes(q));
+  if (!list.length) { box.innerHTML = '<div class="friend">没有匹配的好友</div>'; return; }
+  for (const f of list.slice(0, 500)) {
+    const div = document.createElement("div");
+    div.className = "friend" + (peer === f.uid ? " sel" : "");
+    div.innerHTML = "";
+    const name = document.createElement("span");
+    name.textContent = f.nickname || "(无昵称)";
+    const uid = document.createElement("span");
+    uid.className = "uid";
+    uid.textContent = `uid=${f.uid}` + (f.uniqueId ? ` · @${f.uniqueId}` : "");
+    div.append(name, uid);
+    div.onclick = () => {
+      peer = f.uid;
+      document.querySelectorAll(".friend").forEach((el) => el.classList.remove("sel"));
+      div.classList.add("sel");
+      $("peerInfo").textContent = `收件人：${f.nickname}（uid=${f.uid}）`;
+    };
+    box.append(div);
+  }
+}
+
+$("btnSend").onclick = async () => {
+  const btn = $("btnSend");
+  const text = $("text").value;
+  const box = $("result");
+  box.className = ""; box.style.display = "block"; box.textContent = "发送中…";
+  if (!peer) { box.className = "err"; box.textContent = "先在第 2 步选择一位好友"; return; }
+  if (!text.trim()) { box.className = "err"; box.textContent = "先写消息内容"; return; }
+  btn.disabled = true;
+  try {
+    const data = await api("/api/send", {
+      cookie: $("cookie").value.trim(),
+      peer,
+      text,
+      dryRun: $("dryrun").checked,
+    });
+    box.className = "ok";
+    const out = [...data.logs];
+    if (data.result.dryRun) out.push("dry-run：未真正发送");
+    else out.push("serverMessageId=" + data.result.serverMessageId);
+    box.textContent = out.join("\n");
+  } catch (e) {
+    box.className = "err";
+    box.textContent = "失败：" + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
